@@ -91,7 +91,7 @@ void RtspPipeline::build_pipeline() {
         pipeline_desc +=
             "video/x-h264,profile=baseline ! "
             "h264parse config-interval=1 ! "
-            "appsink name=sink emit-signals=true sync=false max-buffers=1 drop=true";
+            "appsink name=sink emit-signals=true sync=false max-buffers=5 drop=true";
 
     } else if (config_.encoding.passthrough) {
         // Passthrough mode: relay H.264 from RTSP directly
@@ -107,7 +107,7 @@ void RtspPipeline::build_pipeline() {
             "rtph264depay ! "
             "h264parse config-interval=1 ! "
             "video/x-h264,stream-format=byte-stream,alignment=au ! "
-            "appsink name=sink emit-signals=true sync=false max-buffers=1 drop=true";
+            "appsink name=sink emit-signals=true sync=false max-buffers=5 drop=true";
 
     } else {
         // Re-encode mode: decode + encode with bitrate control
@@ -162,7 +162,7 @@ void RtspPipeline::build_pipeline() {
         pipeline_desc +=
             "video/x-h264,stream-format=byte-stream,alignment=au ! "
             "h264parse config-interval=1 ! "
-            "appsink name=sink emit-signals=true sync=false max-buffers=1 drop=true";
+            "appsink name=sink emit-signals=true sync=false max-buffers=5 drop=true";
     }
 
     spdlog::info("Pipeline: {}", pipeline_desc);

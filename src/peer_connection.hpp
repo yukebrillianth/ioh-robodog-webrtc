@@ -75,6 +75,7 @@ private:
 
     uint32_t ssrc_;
     static std::atomic<uint32_t> next_ssrc_;
+    static std::atomic<uint64_t> start_time_; // relative timestamp base
 };
 
 } // namespace ss

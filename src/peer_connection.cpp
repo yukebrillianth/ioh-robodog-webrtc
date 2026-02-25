@@ -5,6 +5,7 @@
 namespace ss {
 
 std::atomic<uint32_t> PeerConnection::next_ssrc_{42};
+std::atomic<uint64_t> PeerConnection::start_time_{0};
 
 PeerConnection::PeerConnection(const std::string& peer_id,
                                const WebRtcConfig& config,
@@ -175,9 +176,14 @@ void PeerConnection::send_h264_nal(const uint8_t* data, size_t size, uint64_t ti
     }
 
     try {
-        // Update RTP timestamp (90kHz clock)
+        // Use relative timestamp from first frame to avoid uint32 overflow
+        uint64_t expected = 0;
+        start_time_.compare_exchange_strong(expected, timestamp_us);
+        uint64_t relative_us = timestamp_us - start_time_.load();
+
+        // Convert to 90kHz RTP clock
         rtp_config_->timestamp = static_cast<uint32_t>(
-            (timestamp_us * rtc::H264RtpPacketizer::defaultClockRate) / 1'000'000);
+            (relative_us * rtc::H264RtpPacketizer::defaultClockRate) / 1'000'000);
 
         // Send the NAL unit(s) via the track
         auto byte_ptr = reinterpret_cast<const std::byte*>(data);
