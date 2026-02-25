@@ -123,11 +123,13 @@ void RtspPipeline::build_pipeline() {
             "rtph264depay ! h264parse ! ";
 
 #ifdef JETSON_PLATFORM
+        // Jetson: always use HW decoder, optionally HW encoder
+        pipeline_desc +=
+            "nvv4l2decoder enable-max-performance=1 disable-dpb=true ! ";
+
         if (config_.encoding.hw_encode) {
+            // HW decode → HW encode (zero-copy, lowest latency)
             pipeline_desc +=
-                "nvv4l2decoder enable-max-performance=1 disable-dpb=true ! "
-                "nvvidconv ! "
-                "video/x-raw(memory:NVMM),format=NV12 ! "
                 "nvv4l2h264enc "
                 "bitrate=" + std::to_string(config_.webrtc.video.bitrate_kbps * 1000) + " "
                 "peak-bitrate=" + std::to_string(config_.webrtc.video.max_bitrate_kbps * 1000) + " "
@@ -137,16 +139,24 @@ void RtspPipeline::build_pipeline() {
                 "insert-sps-pps=1 "
                 "idrinterval=" + std::to_string(config_.encoding.idr_interval) + " ! ";
         } else {
-#endif
+            // HW decode → SW encode (for testing on Jetson without full HW path)
             pipeline_desc +=
-                "avdec_h264 ! videoconvert ! "
+                "nvvidconv ! video/x-raw,format=I420 ! "
                 "x264enc tune=zerolatency speed-preset=ultrafast "
                 "bitrate=" + std::to_string(config_.webrtc.video.bitrate_kbps) + " "
                 "vbv-buf-capacity=" + std::to_string(config_.webrtc.video.max_bitrate_kbps) + " "
                 "key-int-max=" + std::to_string(config_.encoding.idr_interval) + " "
                 "bframes=0 ! ";
-#ifdef JETSON_PLATFORM
         }
+#else
+        // Non-Jetson: software decode + encode
+        pipeline_desc +=
+            "avdec_h264 ! videoconvert ! "
+            "x264enc tune=zerolatency speed-preset=ultrafast "
+            "bitrate=" + std::to_string(config_.webrtc.video.bitrate_kbps) + " "
+            "vbv-buf-capacity=" + std::to_string(config_.webrtc.video.max_bitrate_kbps) + " "
+            "key-int-max=" + std::to_string(config_.encoding.idr_interval) + " "
+            "bframes=0 ! ";
 #endif
         pipeline_desc +=
             "video/x-h264,stream-format=byte-stream,alignment=au ! "
