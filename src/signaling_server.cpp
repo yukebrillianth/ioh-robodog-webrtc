@@ -108,10 +108,25 @@ void SignalingServer::on_client_connected(std::shared_ptr<rtc::WebSocket> ws) {
 
     spdlog::info("Client connected, assigned peer: {}", peer_id);
 
-    // Send peer ID to client
+    // Send peer ID + ICE server config to client
     json welcome;
     welcome["type"] = "welcome";
     welcome["peerId"] = peer_id;
+
+    // Send ICE server config so browser can use TURN
+    json ice_servers = json::array();
+    if (!config_.webrtc.stun_server.empty()) {
+        ice_servers.push_back({{"urls", config_.webrtc.stun_server}});
+    }
+    if (!config_.webrtc.turn_server.empty()) {
+        json turn;
+        turn["urls"] = config_.webrtc.turn_server;
+        turn["username"] = config_.webrtc.turn_username;
+        turn["credential"] = config_.webrtc.turn_credential;
+        ice_servers.push_back(turn);
+    }
+    welcome["iceServers"] = ice_servers;
+
     try {
         ws->send(welcome.dump());
     } catch (const std::exception& e) {

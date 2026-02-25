@@ -1,6 +1,6 @@
 [Unit]
 Description=WebRTC Stream Server for Robot Dog
-Documentation=https://github.com/indosat/stream-server
+Documentation=https://github.com/yukebrillianth/ioh-robodog-webrtc
 After=network-online.target
 Wants=network-online.target
 

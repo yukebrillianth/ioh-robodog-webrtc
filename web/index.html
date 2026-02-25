@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,7 +19,11 @@
             --accent-amber: #f59e0b;
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
         body {
             font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
@@ -83,13 +88,29 @@
             animation: pulse 2s infinite;
         }
 
-        .status-connected .status-dot { background: var(--accent-green); }
-        .status-disconnected .status-dot { background: var(--accent-red); animation: none; }
-        .status-connecting .status-dot { background: var(--accent-amber); }
+        .status-connected .status-dot {
+            background: var(--accent-green);
+        }
+
+        .status-disconnected .status-dot {
+            background: var(--accent-red);
+            animation: none;
+        }
+
+        .status-connecting .status-dot {
+            background: var(--accent-amber);
+        }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
         }
 
         .main {
@@ -151,8 +172,15 @@
         }
 
         @keyframes livePulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.7;
+            }
         }
 
         .sidebar {
@@ -183,7 +211,10 @@
             padding: 4px 0;
         }
 
-        .stat-label { color: var(--text-secondary); }
+        .stat-label {
+            color: var(--text-secondary);
+        }
+
         .stat-value {
             color: var(--text-primary);
             font-weight: 600;
@@ -206,10 +237,19 @@
             text-align: center;
         }
 
-        .btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+        .btn:hover {
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
 
-        .btn-danger { border-color: var(--accent-red); color: var(--accent-red); }
-        .btn-danger:hover { background: rgba(239, 68, 68, 0.1); }
+        .btn-danger {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+        }
+
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
 
         .log-container {
             padding: 12px;
@@ -224,10 +264,21 @@
             word-break: break-all;
         }
 
-        .log-entry.info { color: var(--accent-blue); }
-        .log-entry.warn { color: var(--accent-amber); }
-        .log-entry.error { color: var(--accent-red); }
-        .log-entry.success { color: var(--accent-green); }
+        .log-entry.info {
+            color: var(--accent-blue);
+        }
+
+        .log-entry.warn {
+            color: var(--accent-amber);
+        }
+
+        .log-entry.error {
+            color: var(--accent-red);
+        }
+
+        .log-entry.success {
+            color: var(--accent-green);
+        }
 
         .no-video {
             display: flex;
@@ -239,7 +290,9 @@
             font-size: 14px;
         }
 
-        .no-video svg { opacity: 0.3; }
+        .no-video svg {
+            opacity: 0.3;
+        }
 
         .config-input {
             width: 100%;
@@ -259,6 +312,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="header">
         <div class="header-title">
@@ -287,8 +341,8 @@
             </div>
             <div class="no-video" id="noVideoMsg">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <rect x="2" y="4" width="15" height="14" rx="2"/>
-                    <path d="M17 9l5-3v10l-5-3V9z"/>
+                    <rect x="2" y="4" width="15" height="14" rx="2" />
+                    <path d="M17 9l5-3v10l-5-3V9z" />
                 </svg>
                 <span>No video stream — click Connect</span>
             </div>
@@ -299,8 +353,7 @@
                 <h3>Connection</h3>
                 <div style="margin-bottom:8px;">
                     <label class="stat-label">Server URL</label>
-                    <input type="text" class="config-input" id="serverUrl"
-                           placeholder="ws://192.168.1.x:8080">
+                    <input type="text" class="config-input" id="serverUrl" placeholder="ws://192.168.1.x:8080">
                 </div>
                 <div style="display:flex;gap:6px;">
                     <button class="btn" id="btnConnect" onclick="connect()">Connect</button>
@@ -329,330 +382,343 @@
         </div>
     </div>
 
-<script>
-const video = document.getElementById('videoPlayer');
-const logContainer = document.getElementById('logContainer');
-let ws = null;
-let pc = null;
-let peerId = null;
-let statsInterval = null;
-let prevBytesReceived = 0;
-let prevTimestamp = 0;
-let reconnectTimer = null;
+    <script>
+        const video = document.getElementById('videoPlayer');
+        const logContainer = document.getElementById('logContainer');
+        let ws = null;
+        let pc = null;
+        let peerId = null;
+        let iceServersFromServer = null; // TURN/STUN config received from server
+        let statsInterval = null;
+        let prevBytesReceived = 0;
+        let prevTimestamp = 0;
+        let reconnectTimer = null;
 
-// Auto-detect server URL
-const defaultWsUrl = `ws://${window.location.hostname || 'localhost'}:8080`;
-document.getElementById('serverUrl').value = defaultWsUrl;
+        // Auto-detect server URL
+        const defaultWsUrl = `ws://${window.location.hostname || 'localhost'}:8080`;
+        document.getElementById('serverUrl').value = defaultWsUrl;
 
-// Clock
-setInterval(() => {
-    document.getElementById('clockDisplay').textContent =
-        new Date().toLocaleTimeString('en-US', { hour12: false });
-}, 1000);
+        // Clock
+        setInterval(() => {
+            document.getElementById('clockDisplay').textContent =
+                new Date().toLocaleTimeString('en-US', { hour12: false });
+        }, 1000);
 
-function log(msg, level = 'info') {
-    const entry = document.createElement('div');
-    entry.className = `log-entry ${level}`;
-    entry.textContent = `[${new Date().toLocaleTimeString('en-US',{hour12:false})}] ${msg}`;
-    logContainer.prepend(entry);
-    if (logContainer.children.length > 100) {
-        logContainer.removeChild(logContainer.lastChild);
-    }
-}
-
-function setStatus(state) {
-    const badge = document.getElementById('statusBadge');
-    const text = document.getElementById('statusText');
-    badge.className = 'status-badge status-' + state;
-    text.textContent = state.toUpperCase();
-
-    const btnConnect = document.getElementById('btnConnect');
-    const btnDisconnect = document.getElementById('btnDisconnect');
-    const liveTag = document.getElementById('liveTag');
-    const noVideo = document.getElementById('noVideoMsg');
-
-    if (state === 'connected') {
-        btnConnect.style.display = 'none';
-        btnDisconnect.style.display = 'block';
-        liveTag.style.display = 'block';
-        noVideo.style.display = 'none';
-    } else if (state === 'connecting') {
-        btnConnect.style.display = 'none';
-        btnDisconnect.style.display = 'block';
-        liveTag.style.display = 'none';
-    } else {
-        btnConnect.style.display = 'block';
-        btnDisconnect.style.display = 'none';
-        liveTag.style.display = 'none';
-        noVideo.style.display = 'flex';
-    }
-}
-
-async function connect() {
-    const url = document.getElementById('serverUrl').value.trim();
-    if (!url) return;
-
-    setStatus('connecting');
-    log('Connecting to ' + url + '...', 'info');
-
-    try {
-        ws = new WebSocket(url);
-    } catch (e) {
-        log('WebSocket creation failed: ' + e.message, 'error');
-        setStatus('disconnected');
-        return;
-    }
-
-    ws.onopen = () => {
-        log('WebSocket connected', 'success');
-    };
-
-    ws.onclose = (e) => {
-        log(`WebSocket closed (code: ${e.code})`, 'warn');
-        cleanup();
-        // Auto-reconnect after 3 seconds
-        reconnectTimer = setTimeout(() => {
-            if (!ws || ws.readyState === WebSocket.CLOSED) {
-                log('Auto-reconnecting...', 'info');
-                connect();
+        function log(msg, level = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${level}`;
+            entry.textContent = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${msg}`;
+            logContainer.prepend(entry);
+            if (logContainer.children.length > 100) {
+                logContainer.removeChild(logContainer.lastChild);
             }
-        }, 3000);
-    };
-
-    ws.onerror = (e) => {
-        log('WebSocket error', 'error');
-    };
-
-    ws.onmessage = async (event) => {
-        try {
-            const msg = JSON.parse(event.data);
-            await handleSignaling(msg);
-        } catch (e) {
-            log('Failed to parse message: ' + e.message, 'error');
         }
-    };
-}
 
-async function handleSignaling(msg) {
-    switch (msg.type) {
-        case 'welcome':
-            peerId = msg.peerId;
-            log('Assigned peer: ' + peerId, 'success');
-            await createPeerConnection();
-            break;
+        function setStatus(state) {
+            const badge = document.getElementById('statusBadge');
+            const text = document.getElementById('statusText');
+            badge.className = 'status-badge status-' + state;
+            text.textContent = state.toUpperCase();
 
-        case 'answer':
-            if (pc) {
-                const answer = new RTCSessionDescription({ type: 'answer', sdp: msg.sdp });
-                await pc.setRemoteDescription(answer);
-                log('Remote description set', 'info');
+            const btnConnect = document.getElementById('btnConnect');
+            const btnDisconnect = document.getElementById('btnDisconnect');
+            const liveTag = document.getElementById('liveTag');
+            const noVideo = document.getElementById('noVideoMsg');
+
+            if (state === 'connected') {
+                btnConnect.style.display = 'none';
+                btnDisconnect.style.display = 'block';
+                liveTag.style.display = 'block';
+                noVideo.style.display = 'none';
+            } else if (state === 'connecting') {
+                btnConnect.style.display = 'none';
+                btnDisconnect.style.display = 'block';
+                liveTag.style.display = 'none';
+            } else {
+                btnConnect.style.display = 'block';
+                btnDisconnect.style.display = 'none';
+                liveTag.style.display = 'none';
+                noVideo.style.display = 'flex';
             }
-            break;
+        }
 
-        case 'candidate':
-            if (pc && msg.data) {
-                try {
-                    await pc.addIceCandidate(new RTCIceCandidate(msg.data));
-                    log('Added ICE candidate', 'info');
-                } catch (e) {
-                    log('ICE candidate error: ' + e.message, 'warn');
-                }
+        async function connect() {
+            const url = document.getElementById('serverUrl').value.trim();
+            if (!url) return;
+
+            setStatus('connecting');
+            log('Connecting to ' + url + '...', 'info');
+
+            try {
+                ws = new WebSocket(url);
+            } catch (e) {
+                log('WebSocket creation failed: ' + e.message, 'error');
+                setStatus('disconnected');
+                return;
             }
-            break;
 
-        case 'error':
-            log('Server error: ' + (msg.message || 'unknown'), 'error');
-            break;
+            ws.onopen = () => {
+                log('WebSocket connected', 'success');
+            };
 
-        case 'pong':
-            break;
-
-        default:
-            log('Unknown message: ' + msg.type, 'warn');
-    }
-}
-
-async function createPeerConnection() {
-    const config = {
-        iceServers: [
-            { urls: 'stun:stun.cloudflare.com:3478' },
-            { urls: 'stun:stun.l.google.com:19302' }
-        ],
-        bundlePolicy: 'max-bundle',
-        rtcpMuxPolicy: 'require'
-    };
-
-    pc = new RTCPeerConnection(config);
-
-    pc.ontrack = (event) => {
-        log('Received video track', 'success');
-        video.srcObject = event.streams[0] || new MediaStream([event.track]);
-        video.play().catch(() => {});
-    };
-
-    pc.onicecandidate = (event) => {
-        if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-                type: 'candidate',
-                data: {
-                    candidate: event.candidate.candidate,
-                    sdpMid: event.candidate.sdpMid,
-                    sdpMLineIndex: event.candidate.sdpMLineIndex
-                }
-            }));
-        }
-    };
-
-    pc.onconnectionstatechange = () => {
-        const state = pc.connectionState;
-        document.getElementById('statState').textContent = state;
-        log('Connection: ' + state, state === 'connected' ? 'success' : 'info');
-
-        if (state === 'connected') {
-            setStatus('connected');
-            startStatsMonitor();
-        } else if (state === 'failed' || state === 'closed') {
-            setStatus('disconnected');
-            stopStatsMonitor();
-        }
-    };
-
-    pc.oniceconnectionstatechange = () => {
-        document.getElementById('statIce').textContent = pc.iceConnectionState;
-    };
-
-    // Add receive-only video transceiver
-    pc.addTransceiver('video', { direction: 'recvonly' });
-
-    // Create and send offer
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            type: 'offer',
-            sdp: offer.sdp
-        }));
-        log('Sent SDP offer', 'info');
-    }
-}
-
-function startStatsMonitor() {
-    stopStatsMonitor();
-    prevBytesReceived = 0;
-    prevTimestamp = 0;
-
-    statsInterval = setInterval(async () => {
-        if (!pc) return;
-
-        const stats = await pc.getStats();
-        stats.forEach(report => {
-            if (report.type === 'inbound-rtp' && report.kind === 'video') {
-                // FPS
-                const fps = report.framesPerSecond || 0;
-                document.getElementById('statFps').textContent = fps.toFixed(0);
-                document.getElementById('overlayFps').textContent = fps.toFixed(0);
-
-                // Bitrate
-                const now = report.timestamp;
-                const bytes = report.bytesReceived || 0;
-                if (prevTimestamp > 0) {
-                    const dt = (now - prevTimestamp) / 1000;
-                    const bitrate = ((bytes - prevBytesReceived) * 8) / dt / 1000;
-                    const br = bitrate.toFixed(0);
-                    document.getElementById('statBitrate').textContent = br + ' kbps';
-                    document.getElementById('overlayBitrate').textContent = br + ' kbps';
-                }
-                prevBytesReceived = bytes;
-                prevTimestamp = now;
-
-                // Packets lost
-                document.getElementById('statLost').textContent = report.packetsLost || 0;
-
-                // Jitter
-                const jitter = report.jitter ? (report.jitter * 1000).toFixed(1) + ' ms' : '—';
-                document.getElementById('statJitter').textContent = jitter;
-
-                // Bytes
-                const mb = (bytes / (1024 * 1024)).toFixed(1);
-                document.getElementById('statBytes').textContent = mb + ' MB';
-
-                // Codec
-                if (report.codecId) {
-                    const codecReport = stats.get(report.codecId);
-                    if (codecReport) {
-                        document.getElementById('statCodec').textContent =
-                            codecReport.mimeType || '—';
+            ws.onclose = (e) => {
+                log(`WebSocket closed (code: ${e.code})`, 'warn');
+                cleanup();
+                // Auto-reconnect after 3 seconds
+                reconnectTimer = setTimeout(() => {
+                    if (!ws || ws.readyState === WebSocket.CLOSED) {
+                        log('Auto-reconnecting...', 'info');
+                        connect();
                     }
+                }, 3000);
+            };
+
+            ws.onerror = (e) => {
+                log('WebSocket error', 'error');
+            };
+
+            ws.onmessage = async (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    await handleSignaling(msg);
+                } catch (e) {
+                    log('Failed to parse message: ' + e.message, 'error');
                 }
+            };
+        }
 
-                // Resolution
-                if (report.frameWidth && report.frameHeight) {
-                    document.getElementById('statRes').textContent =
-                        report.frameWidth + '×' + report.frameHeight;
+        async function handleSignaling(msg) {
+            switch (msg.type) {
+                case 'welcome':
+                    peerId = msg.peerId;
+                    iceServersFromServer = msg.iceServers || null;
+                    log('Assigned peer: ' + peerId, 'success');
+                    if (iceServersFromServer && iceServersFromServer.length > 0) {
+                        const hasTurn = iceServersFromServer.some(s => s.urls && s.urls.startsWith('turn:'));
+                        log('ICE servers: ' + iceServersFromServer.length + (hasTurn ? ' (with TURN relay)' : ' (STUN only)'), hasTurn ? 'success' : 'warn');
+                    }
+                    await createPeerConnection();
+                    break;
+
+                case 'answer':
+                    if (pc) {
+                        const answer = new RTCSessionDescription({ type: 'answer', sdp: msg.sdp });
+                        await pc.setRemoteDescription(answer);
+                        log('Remote description set', 'info');
+                    }
+                    break;
+
+                case 'candidate':
+                    if (pc && msg.data) {
+                        try {
+                            await pc.addIceCandidate(new RTCIceCandidate(msg.data));
+                            log('Added ICE candidate', 'info');
+                        } catch (e) {
+                            log('ICE candidate error: ' + e.message, 'warn');
+                        }
+                    }
+                    break;
+
+                case 'error':
+                    log('Server error: ' + (msg.message || 'unknown'), 'error');
+                    break;
+
+                case 'pong':
+                    break;
+
+                default:
+                    log('Unknown message: ' + msg.type, 'warn');
+            }
+        }
+
+        async function createPeerConnection() {
+            // Use ICE servers from server (includes TURN for NAT traversal)
+            // Fall back to public STUN only if server didn't send config
+            const iceServers = iceServersFromServer && iceServersFromServer.length > 0
+                ? iceServersFromServer
+                : [
+                    { urls: 'stun:stun.cloudflare.com:3478' },
+                    { urls: 'stun:stun.l.google.com:19302' }
+                ];
+
+            const config = {
+                iceServers: iceServers,
+                bundlePolicy: 'max-bundle',
+                rtcpMuxPolicy: 'require'
+            };
+
+            pc = new RTCPeerConnection(config);
+
+            pc.ontrack = (event) => {
+                log('Received video track', 'success');
+                video.srcObject = event.streams[0] || new MediaStream([event.track]);
+                video.play().catch(() => { });
+            };
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'candidate',
+                        data: {
+                            candidate: event.candidate.candidate,
+                            sdpMid: event.candidate.sdpMid,
+                            sdpMLineIndex: event.candidate.sdpMLineIndex
+                        }
+                    }));
                 }
+            };
+
+            pc.onconnectionstatechange = () => {
+                const state = pc.connectionState;
+                document.getElementById('statState').textContent = state;
+                log('Connection: ' + state, state === 'connected' ? 'success' : 'info');
+
+                if (state === 'connected') {
+                    setStatus('connected');
+                    startStatsMonitor();
+                } else if (state === 'failed' || state === 'closed') {
+                    setStatus('disconnected');
+                    stopStatsMonitor();
+                }
+            };
+
+            pc.oniceconnectionstatechange = () => {
+                document.getElementById('statIce').textContent = pc.iceConnectionState;
+            };
+
+            // Add receive-only video transceiver
+            pc.addTransceiver('video', { direction: 'recvonly' });
+
+            // Create and send offer
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'offer',
+                    sdp: offer.sdp
+                }));
+                log('Sent SDP offer', 'info');
             }
+        }
 
-            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-                const rtt = report.currentRoundTripTime
-                    ? (report.currentRoundTripTime * 1000).toFixed(0) + ' ms'
-                    : '—';
-                document.getElementById('statRtt').textContent = rtt;
-                document.getElementById('overlayRtt').textContent = rtt;
+        function startStatsMonitor() {
+            stopStatsMonitor();
+            prevBytesReceived = 0;
+            prevTimestamp = 0;
+
+            statsInterval = setInterval(async () => {
+                if (!pc) return;
+
+                const stats = await pc.getStats();
+                stats.forEach(report => {
+                    if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                        // FPS
+                        const fps = report.framesPerSecond || 0;
+                        document.getElementById('statFps').textContent = fps.toFixed(0);
+                        document.getElementById('overlayFps').textContent = fps.toFixed(0);
+
+                        // Bitrate
+                        const now = report.timestamp;
+                        const bytes = report.bytesReceived || 0;
+                        if (prevTimestamp > 0) {
+                            const dt = (now - prevTimestamp) / 1000;
+                            const bitrate = ((bytes - prevBytesReceived) * 8) / dt / 1000;
+                            const br = bitrate.toFixed(0);
+                            document.getElementById('statBitrate').textContent = br + ' kbps';
+                            document.getElementById('overlayBitrate').textContent = br + ' kbps';
+                        }
+                        prevBytesReceived = bytes;
+                        prevTimestamp = now;
+
+                        // Packets lost
+                        document.getElementById('statLost').textContent = report.packetsLost || 0;
+
+                        // Jitter
+                        const jitter = report.jitter ? (report.jitter * 1000).toFixed(1) + ' ms' : '—';
+                        document.getElementById('statJitter').textContent = jitter;
+
+                        // Bytes
+                        const mb = (bytes / (1024 * 1024)).toFixed(1);
+                        document.getElementById('statBytes').textContent = mb + ' MB';
+
+                        // Codec
+                        if (report.codecId) {
+                            const codecReport = stats.get(report.codecId);
+                            if (codecReport) {
+                                document.getElementById('statCodec').textContent =
+                                    codecReport.mimeType || '—';
+                            }
+                        }
+
+                        // Resolution
+                        if (report.frameWidth && report.frameHeight) {
+                            document.getElementById('statRes').textContent =
+                                report.frameWidth + '×' + report.frameHeight;
+                        }
+                    }
+
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                        const rtt = report.currentRoundTripTime
+                            ? (report.currentRoundTripTime * 1000).toFixed(0) + ' ms'
+                            : '—';
+                        document.getElementById('statRtt').textContent = rtt;
+                        document.getElementById('overlayRtt').textContent = rtt;
+                    }
+                });
+            }, 1000);
+        }
+
+        function stopStatsMonitor() {
+            if (statsInterval) {
+                clearInterval(statsInterval);
+                statsInterval = null;
             }
-        });
-    }, 1000);
-}
+        }
 
-function stopStatsMonitor() {
-    if (statsInterval) {
-        clearInterval(statsInterval);
-        statsInterval = null;
-    }
-}
+        function disconnect() {
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
+            cleanup();
+            log('Disconnected by user', 'warn');
+        }
 
-function disconnect() {
-    if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-    }
-    cleanup();
-    log('Disconnected by user', 'warn');
-}
+        function cleanup() {
+            stopStatsMonitor();
 
-function cleanup() {
-    stopStatsMonitor();
+            if (pc) {
+                pc.close();
+                pc = null;
+            }
+            if (ws) {
+                ws.onclose = null; // Prevent auto-reconnect
+                ws.close();
+                ws = null;
+            }
+            peerId = null;
 
-    if (pc) {
-        pc.close();
-        pc = null;
-    }
-    if (ws) {
-        ws.onclose = null; // Prevent auto-reconnect
-        ws.close();
-        ws = null;
-    }
-    peerId = null;
+            video.srcObject = null;
+            setStatus('disconnected');
 
-    video.srcObject = null;
-    setStatus('disconnected');
+            // Reset stats display
+            ['statState', 'statIce', 'statCodec', 'statRes', 'statFps', 'statBitrate',
+                'statRtt', 'statLost', 'statJitter', 'statBytes'].forEach(id => {
+                    document.getElementById(id).textContent = '—';
+                });
+            ['overlayFps', 'overlayBitrate', 'overlayRtt'].forEach(id => {
+                document.getElementById(id).textContent = '--';
+            });
+        }
 
-    // Reset stats display
-    ['statState','statIce','statCodec','statRes','statFps','statBitrate',
-     'statRtt','statLost','statJitter','statBytes'].forEach(id => {
-        document.getElementById(id).textContent = '—';
-    });
-    ['overlayFps','overlayBitrate','overlayRtt'].forEach(id => {
-        document.getElementById(id).textContent = '--';
-    });
-}
-
-// Ping keepalive
-setInterval(() => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'ping' }));
-    }
-}, 10000);
-</script>
+        // Ping keepalive
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 10000);
+    </script>
 </body>
+
 </html>
