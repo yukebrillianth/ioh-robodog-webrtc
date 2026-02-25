@@ -128,8 +128,9 @@ void RtspPipeline::build_pipeline() {
             "nvv4l2decoder enable-max-performance=1 disable-dpb=true ! ";
 
         if (config_.encoding.hw_encode) {
-            // HW decode → HW encode (zero-copy, lowest latency)
+            // HW decode → nvvidconv (caps negotiation) → HW encode
             pipeline_desc +=
+                "nvvidconv ! video/x-raw(memory:NVMM),format=I420 ! "
                 "nvv4l2h264enc "
                 "bitrate=" + std::to_string(config_.webrtc.video.bitrate_kbps * 1000) + " "
                 "peak-bitrate=" + std::to_string(config_.webrtc.video.max_bitrate_kbps * 1000) + " "
