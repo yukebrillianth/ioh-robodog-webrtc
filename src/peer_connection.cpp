@@ -34,8 +34,6 @@ void PeerConnection::setup_connection() {
 
     // TURN server (Cloudflare or custom)
     if (!config_.turn_server.empty()) {
-        // libdatachannel accepts TURN as a string: "turn:host:port?transport=udp"
-        // with username and password set separately via IceServer struct
         rtc::IceServer turn_server(config_.turn_server);
         turn_server.username = config_.turn_username;
         turn_server.password = config_.turn_credential;
@@ -43,10 +41,20 @@ void PeerConnection::setup_connection() {
         spdlog::debug("[{}] TURN: {}", peer_id_, config_.turn_server);
     }
 
-    // Disable auto-negotiation — server adds tracks before receiving offers
+    // Disable auto-negotiation — we manually trigger offer creation
     rtc_config.disableAutoNegotiation = true;
 
     pc_ = std::make_shared<rtc::PeerConnection>(rtc_config);
+
+    // ─── Send local description (offer) to browser via signaling ─────────
+    pc_->onLocalDescription([this](rtc::Description description) {
+        std::string sdp = std::string(description);
+        std::string type = description.typeString();
+        spdlog::debug("[{}] Local description: {}", peer_id_, type);
+        if (signaling_cb_) {
+            signaling_cb_(type, sdp);
+        }
+    });
 
     // State change callback
     pc_->onStateChange([this](rtc::PeerConnection::State state) {
@@ -90,7 +98,7 @@ void PeerConnection::setup_connection() {
         }
     });
 
-    // ─── Add video track ─────────────────────────────────────────────────────
+    // ─── Add video track ─────────────────────────────────────────────────
     const std::string cname = "video-stream";
     const std::string msid = "stream-server";
 
@@ -110,17 +118,17 @@ void PeerConnection::setup_connection() {
         rtc::H264RtpPacketizer::defaultClockRate
     );
 
-    // H.264 packetizer — using LongStartSequence separator for byte-stream NALUs from GStreamer
+    // H.264 packetizer — LongStartSequence for byte-stream NALUs from GStreamer
     packetizer_ = std::make_shared<rtc::H264RtpPacketizer>(
         rtc::NalUnit::Separator::LongStartSequence,
         rtp_config_
     );
 
-    // RTCP Sender Report — required for receiver sync and stats
+    // RTCP Sender Report
     sr_reporter_ = std::make_shared<rtc::RtcpSrReporter>(rtp_config_);
     packetizer_->addToChain(sr_reporter_);
 
-    // RTCP NACK responder — handles retransmission requests
+    // RTCP NACK responder
     auto nack_responder = std::make_shared<rtc::RtcpNackResponder>();
     packetizer_->addToChain(nack_responder);
 
@@ -139,23 +147,16 @@ void PeerConnection::setup_connection() {
     spdlog::info("[{}] Peer connection created (SSRC={})", peer_id_, ssrc_);
 }
 
-void PeerConnection::handle_offer(const std::string& sdp) {
-    spdlog::debug("[{}] Received offer", peer_id_);
+void PeerConnection::start_offer() {
+    // Server creates the offer (since it has sendonly tracks)
+    pc_->setLocalDescription(rtc::Description::Type::Offer);
+    spdlog::info("[{}] Created and sent SDP offer", peer_id_);
+}
 
-    rtc::Description offer(sdp, rtc::Description::Type::Offer);
-    pc_->setRemoteDescription(offer);
-
-    // Create answer
-    pc_->setLocalDescription(rtc::Description::Type::Answer);
-
-    auto local_desc = pc_->localDescription();
-    if (local_desc) {
-        std::string answer_sdp = std::string(local_desc.value());
-        spdlog::debug("[{}] Sending answer", peer_id_);
-        if (signaling_cb_) {
-            signaling_cb_("answer", answer_sdp);
-        }
-    }
+void PeerConnection::handle_answer(const std::string& sdp) {
+    spdlog::debug("[{}] Received SDP answer", peer_id_);
+    rtc::Description answer(sdp, rtc::Description::Type::Answer);
+    pc_->setRemoteDescription(answer);
     needs_keyframe_.store(true);
 }
 
@@ -175,9 +176,8 @@ void PeerConnection::send_h264_nal(const uint8_t* data, size_t size, uint64_t ti
 
     try {
         // Update RTP timestamp (90kHz clock)
-        auto elapsed_us = timestamp_us;
         rtp_config_->timestamp = static_cast<uint32_t>(
-            (elapsed_us * rtc::H264RtpPacketizer::defaultClockRate) / 1'000'000);
+            (timestamp_us * rtc::H264RtpPacketizer::defaultClockRate) / 1'000'000);
 
         // Send the NAL unit(s) via the track
         auto byte_ptr = reinterpret_cast<const std::byte*>(data);

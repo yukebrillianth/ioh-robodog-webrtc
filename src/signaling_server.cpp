@@ -41,7 +41,6 @@ bool SignalingServer::start() {
 void SignalingServer::stop() {
     running_.store(false);
 
-    // Close all client connections
     {
         std::lock_guard<std::mutex> lock(clients_mutex_);
         for (auto& [id, session] : clients_) {
@@ -61,22 +60,18 @@ void SignalingServer::stop() {
 }
 
 void SignalingServer::on_client_connected(std::shared_ptr<rtc::WebSocket> ws) {
-    // Create a WebRTC peer for this client
-    std::string peer_id;
-
     auto ws_weak = std::weak_ptr<rtc::WebSocket>(ws);
 
-    // Signaling callback: sends messages back to the client's WebSocket
+    // Signaling callback: sends offer/answer/candidate to the browser
     SignalingCallback sig_cb = [this, ws_weak](const std::string& type, const std::string& payload) {
         auto ws_shared = ws_weak.lock();
         if (ws_shared) {
             json msg;
             msg["type"] = type;
 
-            if (type == "answer") {
+            if (type == "offer" || type == "answer") {
                 msg["sdp"] = payload;
             } else if (type == "candidate") {
-                // payload is already JSON string for candidate
                 try {
                     msg["data"] = json::parse(payload);
                 } catch (...) {
@@ -92,7 +87,8 @@ void SignalingServer::on_client_connected(std::shared_ptr<rtc::WebSocket> ws) {
         }
     };
 
-    peer_id = webrtc_server_.create_peer(std::move(sig_cb));
+    // Create WebRTC peer
+    std::string peer_id = webrtc_server_.create_peer(std::move(sig_cb));
 
     if (peer_id.empty()) {
         spdlog::warn("Rejected client: max peers reached");
@@ -108,12 +104,11 @@ void SignalingServer::on_client_connected(std::shared_ptr<rtc::WebSocket> ws) {
 
     spdlog::info("Client connected, assigned peer: {}", peer_id);
 
-    // Send peer ID + ICE server config to client
+    // Send welcome with peer ID and ICE server config
     json welcome;
     welcome["type"] = "welcome";
     welcome["peerId"] = peer_id;
 
-    // Send ICE server config so browser can use TURN
     json ice_servers = json::array();
     if (!config_.webrtc.stun_server.empty()) {
         ice_servers.push_back({{"urls", config_.webrtc.stun_server}});
@@ -155,6 +150,10 @@ void SignalingServer::on_client_connected(std::shared_ptr<rtc::WebSocket> ws) {
         spdlog::warn("[{}] WebSocket error: {}", captured_peer_id, error);
         on_client_disconnected(captured_peer_id);
     });
+
+    // SERVER creates the offer (since it has sendonly video track)
+    // The onLocalDescription callback will send it to the browser
+    webrtc_server_.start_offer(peer_id);
 }
 
 void SignalingServer::on_client_message(const std::string& peer_id,
@@ -164,11 +163,12 @@ void SignalingServer::on_client_message(const std::string& peer_id,
         auto msg = json::parse(message);
         std::string type = msg.value("type", "");
 
-        if (type == "offer") {
+        if (type == "answer") {
+            // Browser sends answer in response to our offer
             std::string sdp = msg.value("sdp", "");
             if (!sdp.empty()) {
-                spdlog::debug("[{}] Received SDP offer", peer_id);
-                webrtc_server_.handle_offer(peer_id, sdp);
+                spdlog::debug("[{}] Received SDP answer", peer_id);
+                webrtc_server_.handle_answer(peer_id, sdp);
             }
         } else if (type == "candidate") {
             auto data = msg.value("data", json::object());

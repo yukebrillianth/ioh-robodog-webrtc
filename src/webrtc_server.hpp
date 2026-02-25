@@ -24,8 +24,11 @@ public:
     // Create a new peer connection, returns peer_id
     std::string create_peer(SignalingCallback signaling_cb);
 
-    // Handle signaling messages for a peer
-    void handle_offer(const std::string& peer_id, const std::string& sdp);
+    // Initiate offer for a peer (server sends offer to browser)
+    void start_offer(const std::string& peer_id);
+
+    // Handle signaling messages from browser
+    void handle_answer(const std::string& peer_id, const std::string& sdp);
     void handle_candidate(const std::string& peer_id,
                           const std::string& candidate, const std::string& mid);
 

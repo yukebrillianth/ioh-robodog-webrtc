@@ -45,13 +45,23 @@ std::string WebRtcServer::create_peer(SignalingCallback signaling_cb) {
     }
 }
 
-void WebRtcServer::handle_offer(const std::string& peer_id, const std::string& sdp) {
+void WebRtcServer::start_offer(const std::string& peer_id) {
     std::lock_guard<std::mutex> lock(peers_mutex_);
     auto it = peers_.find(peer_id);
     if (it != peers_.end()) {
-        it->second->handle_offer(sdp);
+        it->second->start_offer();
     } else {
         spdlog::warn("Unknown peer for offer: {}", peer_id);
+    }
+}
+
+void WebRtcServer::handle_answer(const std::string& peer_id, const std::string& sdp) {
+    std::lock_guard<std::mutex> lock(peers_mutex_);
+    auto it = peers_.find(peer_id);
+    if (it != peers_.end()) {
+        it->second->handle_answer(sdp);
+    } else {
+        spdlog::warn("Unknown peer for answer: {}", peer_id);
     }
 }
 

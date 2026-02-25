@@ -497,14 +497,23 @@
                         const hasTurn = iceServersFromServer.some(s => s.urls && s.urls.startsWith('turn:'));
                         log('ICE servers: ' + iceServersFromServer.length + (hasTurn ? ' (with TURN relay)' : ' (STUN only)'), hasTurn ? 'success' : 'warn');
                     }
-                    await createPeerConnection();
+                    // Initialize PeerConnection, server will send offer next
+                    initPeerConnection();
+                    log('Waiting for server offer...', 'info');
                     break;
 
-                case 'answer':
+                case 'offer':
+                    // Server sends offer (it has the sendonly video track)
                     if (pc) {
-                        const answer = new RTCSessionDescription({ type: 'answer', sdp: msg.sdp });
-                        await pc.setRemoteDescription(answer);
-                        log('Remote description set', 'info');
+                        log('Received SDP offer from server', 'info');
+                        const offer = new RTCSessionDescription({ type: 'offer', sdp: msg.sdp });
+                        await pc.setRemoteDescription(offer);
+                        const answer = await pc.createAnswer();
+                        await pc.setLocalDescription(answer);
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp }));
+                            log('Sent SDP answer', 'success');
+                        }
                     }
                     break;
 
@@ -512,7 +521,6 @@
                     if (pc && msg.data) {
                         try {
                             await pc.addIceCandidate(new RTCIceCandidate(msg.data));
-                            log('Added ICE candidate', 'info');
                         } catch (e) {
                             log('ICE candidate error: ' + e.message, 'warn');
                         }
@@ -531,9 +539,8 @@
             }
         }
 
-        async function createPeerConnection() {
+        function initPeerConnection() {
             // Use ICE servers from server (includes TURN for NAT traversal)
-            // Fall back to public STUN only if server didn't send config
             const iceServers = iceServersFromServer && iceServersFromServer.length > 0
                 ? iceServersFromServer
                 : [
@@ -585,21 +592,6 @@
             pc.oniceconnectionstatechange = () => {
                 document.getElementById('statIce').textContent = pc.iceConnectionState;
             };
-
-            // Add receive-only video transceiver
-            pc.addTransceiver('video', { direction: 'recvonly' });
-
-            // Create and send offer
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'offer',
-                    sdp: offer.sdp
-                }));
-                log('Sent SDP offer', 'info');
-            }
         }
 
         function startStatsMonitor() {

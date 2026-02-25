@@ -7,7 +7,6 @@
 #include <mutex>
 #include <atomic>
 #include <string>
-#include <chrono>
 
 namespace ss {
 
@@ -25,8 +24,13 @@ public:
     PeerConnection(const PeerConnection&) = delete;
     PeerConnection& operator=(const PeerConnection&) = delete;
 
-    // Handle incoming signaling messages
-    void handle_offer(const std::string& sdp);
+    // Server creates offer → sends to browser
+    void start_offer();
+
+    // Browser sends answer back → server sets remote description
+    void handle_answer(const std::string& sdp);
+
+    // ICE candidate exchange
     void handle_candidate(const std::string& candidate, const std::string& mid);
 
     // Send H.264 NAL units to remote peer
@@ -69,7 +73,6 @@ private:
     mutable std::mutex stats_mutex_;
     Stats stats_;
 
-    // Bitrate control
     uint32_t ssrc_;
     static std::atomic<uint32_t> next_ssrc_;
 };
