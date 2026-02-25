@@ -1,0 +1,43 @@
+server:
+  signaling_port: 8080
+  # Static file serving for the web viewer
+  web_root: "./web"
+
+rtsp:
+  url: "rtsp://admin:password@192.168.1.100:554/cam/realmonitor?channel=1&subtype=0"
+  transport: "tcp"
+  latency_ms: 0
+  reconnect_interval_ms: 3000
+  reconnect_max_attempts: 0 # 0 = unlimited
+
+webrtc:
+  stun_server: "stun:stun.cloudflare.com:3478"
+  turn_server: "" # e.g. "turn:user:pass@turn.example.com:3478"
+  turn_username: ""
+  turn_credential: ""
+  max_peers: 4
+  video:
+    codec: "H264"
+    clock_rate: 90000
+    payload_type: 96
+    # Bitrate limiting
+    bitrate_kbps: 4000
+    max_bitrate_kbps: 8000
+    min_bitrate_kbps: 500
+    fps: 30
+
+encoding:
+  # Set to true on Jetson Orin NX for nvv4l2h264enc
+  hw_encode: false
+  # Passthrough mode: relay H.264 from RTSP directly (no re-encode)
+  # When true, ignores hw_encode and bitrate settings at encoder level
+  passthrough: true
+  preset: "UltraFastPreset"
+  idr_interval: 30
+  insert_sps_pps: true
+
+logging:
+  level: "info" # trace, debug, info, warn, error, critical
+  file: "" # empty = stdout only
+  max_file_size_mb: 10
+  max_files: 3

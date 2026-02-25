@@ -1,0 +1,41 @@
+[Unit]
+Description=WebRTC Stream Server for Robot Dog
+Documentation=https://github.com/indosat/stream-server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/stream-server --config /etc/stream-server/config.yaml
+WorkingDirectory=/usr/local/share/stream-server
+
+# Restart policy
+Restart=always
+RestartSec=3
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+# Watchdog (server sends sd_notify keepalive)
+WatchdogSec=60
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/stream-server
+PrivateTmp=true
+
+# Environment
+EnvironmentFile=-/etc/stream-server/environment
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stream-server
+
+[Install]
+WantedBy=multi-user.target
