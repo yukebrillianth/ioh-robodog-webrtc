@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robot Dog — Live View</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
+        }
+
+        .reconnecting {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #888;
+            font-family: system-ui, sans-serif;
+            font-size: 14px;
+            text-align: center;
+            display: none;
+        }
+
+        .reconnecting.visible {
+            display: block;
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid #333;
+            border-top-color: #888;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <video id="v" autoplay muted playsinline></video>
+    <div class="reconnecting" id="msg">
+        <div class="spinner"></div>
+        Connecting...
+    </div>
+    <script>
+        const video = document.getElementById('v');
+        const msg = document.getElementById('msg');
+        let ws, pc;
+
+        // Auto-detect signaling URL from query param or page hostname
+        const params = new URLSearchParams(window.location.search);
+        const wsPort = params.get('port') || '8080';
+        const wsHost = params.get('host') || window.location.hostname || 'localhost';
+        const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const wsUrl = params.get('ws') || `${wsProto}://${wsHost}:${wsPort}`;
+
+        let iceServers = null;
+
+        function connect() {
+            msg.classList.add('visible');
+            msg.querySelector('div:last-child') || (msg.innerHTML = '<div class="spinner"></div>Connecting...');
+
+            try { ws = new WebSocket(wsUrl); } catch (e) { retry(); return; }
+
+            ws.onopen = () => { };
+            ws.onclose = () => { cleanup(); retry(); };
+            ws.onerror = () => { };
+            ws.onmessage = async (e) => {
+                const m = JSON.parse(e.data);
+                if (m.type === 'welcome') {
+                    iceServers = m.iceServers || null;
+                    initPC();
+                } else if (m.type === 'offer' && pc) {
+                    await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: m.sdp }));
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp }));
+                } else if (m.type === 'candidate' && pc && m.data) {
+                    try { await pc.addIceCandidate(new RTCIceCandidate(m.data)); } catch (e) { }
+                }
+            };
+        }
+
+        function initPC() {
+            const cfg = {
+                iceServers: iceServers || [{ urls: 'stun:stun.cloudflare.com:3478' }],
+                bundlePolicy: 'max-bundle',
+                rtcpMuxPolicy: 'require'
+            };
+            pc = new RTCPeerConnection(cfg);
+            pc.ontrack = (e) => {
+                video.srcObject = e.streams[0] || new MediaStream([e.track]);
+                video.play().catch(() => { });
+                msg.classList.remove('visible');
+            };
+            pc.onicecandidate = (e) => {
+                if (e.candidate && ws && ws.readyState === 1) {
+                    ws.send(JSON.stringify({
+                        type: 'candidate',
+                        data: { candidate: e.candidate.candidate, sdpMid: e.candidate.sdpMid, sdpMLineIndex: e.candidate.sdpMLineIndex }
+                    }));
+                }
+            };
+            pc.onconnectionstatechange = () => {
+                if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                    cleanup(); retry();
+                }
+            };
+        }
+
+        function cleanup() {
+            if (pc) { pc.close(); pc = null; }
+            if (ws) { ws.onclose = null; ws.close(); ws = null; }
+            video.srcObject = null;
+        }
+
+        function retry() {
+            msg.classList.add('visible');
+            setTimeout(connect, 3000);
+        }
+
+        // Ping keepalive
+        setInterval(() => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' })); }, 10000);
+
+        connect();
+    </script>
+</body>
+
+</html>

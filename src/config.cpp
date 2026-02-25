@@ -28,6 +28,7 @@ AppConfig load_config(const std::string& path) {
     // Server
     if (auto s = root["server"]) {
         cfg.server.signaling_port = s["signaling_port"].as<uint16_t>(cfg.server.signaling_port);
+        cfg.server.http_port = s["http_port"].as<uint16_t>(cfg.server.http_port);
         cfg.server.web_root = s["web_root"].as<std::string>(cfg.server.web_root);
     }
 

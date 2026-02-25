@@ -3,6 +3,7 @@
 #include "rtsp_pipeline.hpp"
 #include "webrtc_server.hpp"
 #include "signaling_server.hpp"
+#include "http_server.hpp"
 
 #include <spdlog/spdlog.h>
 #include <csignal>
@@ -40,6 +41,8 @@ static void print_banner(const ss::AppConfig& cfg) {
     spdlog::info("  TURN            : {}", cfg.webrtc.turn_server.empty() ? "(disabled)" : cfg.webrtc.turn_server);
     spdlog::info("  HW encode       : {}", cfg.encoding.hw_encode ? "yes (Jetson)" : "no (software)");
     spdlog::info("  Passthrough     : {}", cfg.encoding.passthrough ? "yes" : "no");
+    spdlog::info("  HTTP port       : {}", cfg.server.http_port);
+    spdlog::info("  Web root        : {}", cfg.server.web_root);
 }
 
 int main(int argc, char* argv[]) {
@@ -89,6 +92,7 @@ int main(int argc, char* argv[]) {
     ss::WebRtcServer webrtc_server(config);
     ss::SignalingServer signaling_server(config, webrtc_server);
     ss::RtspPipeline rtsp_pipeline(config);
+    ss::HttpServer http_server(config.server.http_port, config.server.web_root);
 
     // ─── Wire RTSP → WebRTC ───────────────────────────────────────────────────
     rtsp_pipeline.set_nal_callback(
@@ -110,8 +114,15 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    spdlog::info("All systems operational — waiting for connections on port {}",
-                 config.server.signaling_port);
+    if (!http_server.start()) {
+        spdlog::warn("Failed to start HTTP server on port {} — web viewer unavailable",
+                     config.server.http_port);
+    }
+
+    spdlog::info("All systems operational");
+    spdlog::info("  WebSocket signaling : ws://0.0.0.0:{}", config.server.signaling_port);
+    spdlog::info("  Web viewer (debug)  : http://0.0.0.0:{}/", config.server.http_port);
+    spdlog::info("  Web viewer (embed)  : http://0.0.0.0:{}/embed.html", config.server.http_port);
 
     // ─── Main watchdog loop ───────────────────────────────────────────────────
     auto last_stats_time = std::chrono::steady_clock::now();
@@ -152,6 +163,7 @@ int main(int argc, char* argv[]) {
     // ─── Graceful shutdown ────────────────────────────────────────────────────
     spdlog::info("Shutting down...");
     rtsp_pipeline.stop();
+    http_server.stop();
     signaling_server.stop();
     webrtc_server.stop();
     spdlog::info("Shutdown complete. Goodbye!");

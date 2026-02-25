@@ -7,6 +7,7 @@ namespace ss {
 
 struct ServerConfig {
     uint16_t signaling_port = 8080;
+    uint16_t http_port = 8081;
     std::string web_root = "./web";
 };
 

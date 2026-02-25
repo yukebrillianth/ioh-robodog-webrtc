@@ -376,6 +376,14 @@
             </div>
 
             <div class="sidebar-section">
+                <h3>Connection Info</h3>
+                <div class="stat-row"><span class="stat-label">Type</span><span class="stat-value" id="statConnType">—</span></div>
+                <div class="stat-row"><span class="stat-label">Remote IP</span><span class="stat-value" id="statRemoteIp">—</span></div>
+                <div class="stat-row"><span class="stat-label">Local IP</span><span class="stat-value" id="statLocalIp">—</span></div>
+                <div class="stat-row"><span class="stat-label">Protocol</span><span class="stat-value" id="statProtocol">—</span></div>
+            </div>
+
+            <div class="sidebar-section">
                 <h3>Event Log</h3>
             </div>
             <div class="log-container" id="logContainer"></div>
@@ -656,6 +664,35 @@
                             : '—';
                         document.getElementById('statRtt').textContent = rtt;
                         document.getElementById('overlayRtt').textContent = rtt;
+
+                        // Get candidate details for connection info
+                        const localId = report.localCandidateId;
+                        const remoteId = report.remoteCandidateId;
+                        if (localId) {
+                            const local = stats.get(localId);
+                            if (local) {
+                                const addr = (local.address || local.ip || '?') + ':' + (local.port || '?');
+                                document.getElementById('statLocalIp').textContent = addr;
+                                const type = local.candidateType || '—';
+                                const isRelay = type === 'relay';
+                                document.getElementById('statConnType').textContent = isRelay
+                                    ? '🔄 TURN Relay'
+                                    : type === 'srflx' ? '🌐 STUN (NAT)'
+                                        : type === 'host' ? '📍 Direct'
+                                            : type === 'prflx' ? '🔀 Peer Reflexive'
+                                                : type;
+                                document.getElementById('statProtocol').textContent =
+                                    (local.protocol || '—').toUpperCase() +
+                                    (local.relayProtocol ? ' → ' + local.relayProtocol.toUpperCase() : '');
+                            }
+                        }
+                        if (remoteId) {
+                            const remote = stats.get(remoteId);
+                            if (remote) {
+                                const addr = (remote.address || remote.ip || '?') + ':' + (remote.port || '?');
+                                document.getElementById('statRemoteIp').textContent = addr;
+                            }
+                        }
                     }
                 });
             }, 1000);
@@ -696,7 +733,8 @@
 
             // Reset stats display
             ['statState', 'statIce', 'statCodec', 'statRes', 'statFps', 'statBitrate',
-                'statRtt', 'statLost', 'statJitter', 'statBytes'].forEach(id => {
+                'statRtt', 'statLost', 'statJitter', 'statBytes',
+                'statConnType', 'statRemoteIp', 'statLocalIp', 'statProtocol'].forEach(id => {
                     document.getElementById(id).textContent = '—';
                 });
             ['overlayFps', 'overlayBitrate', 'overlayRtt'].forEach(id => {

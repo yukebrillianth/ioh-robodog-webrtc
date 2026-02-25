@@ -1,5 +1,6 @@
 server:
   signaling_port: 8080
+  http_port: 8081
   # Static file serving for the web viewer
   web_root: "./web"
 

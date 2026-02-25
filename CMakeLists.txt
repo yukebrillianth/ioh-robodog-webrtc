@@ -84,6 +84,7 @@ set(SOURCES
     src/webrtc_server.cpp
     src/signaling_server.cpp
     src/peer_connection.cpp
+    src/http_server.cpp
 )
 
 # ─── Executable ────────────────────────────────────────────────────────────────
