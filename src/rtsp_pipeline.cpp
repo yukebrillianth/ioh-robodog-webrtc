@@ -120,17 +120,16 @@ void RtspPipeline::build_pipeline() {
             "buffer-mode=auto "
             "do-retransmission=false "
             "drop-on-latency=true ! "
-            "rtph264depay ! h264parse ! ";
+            "rtph264depay ! "
+            "h264parse config-interval=-1 ! "
+            "video/x-h264,stream-format=byte-stream,alignment=au ! ";
 
 #ifdef JETSON_PLATFORM
         // Jetson: always use HW decoder, optionally HW encoder
-        pipeline_desc +=
-            "nvv4l2decoder enable-max-performance=1 disable-dpb=true ! ";
-
         if (config_.encoding.hw_encode) {
-            // HW decode → nvvidconv (caps negotiation) → HW encode
+            // HW decode → HW encode
             pipeline_desc +=
-                "nvvidconv ! video/x-raw(memory:NVMM),format=I420 ! "
+                "nvv4l2decoder enable-max-performance=1 ! "
                 "nvv4l2h264enc "
                 "bitrate=" + std::to_string(config_.webrtc.video.bitrate_kbps * 1000) + " "
                 "peak-bitrate=" + std::to_string(config_.webrtc.video.max_bitrate_kbps * 1000) + " "
@@ -140,8 +139,9 @@ void RtspPipeline::build_pipeline() {
                 "insert-sps-pps=1 "
                 "idrinterval=" + std::to_string(config_.encoding.idr_interval) + " ! ";
         } else {
-            // HW decode → SW encode (for testing on Jetson without full HW path)
+            // HW decode → SW encode
             pipeline_desc +=
+                "nvv4l2decoder enable-max-performance=1 ! "
                 "nvvidconv ! video/x-raw,format=I420 ! "
                 "x264enc tune=zerolatency speed-preset=ultrafast "
                 "bitrate=" + std::to_string(config_.webrtc.video.bitrate_kbps) + " "
