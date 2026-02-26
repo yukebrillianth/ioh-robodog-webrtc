@@ -116,7 +116,17 @@
                 rtcpMuxPolicy: 'require'
             };
             pc = new RTCPeerConnection(cfg);
+
+            // Timeout: if not connected in 10s, force reconnect
+            const connTimeout = setTimeout(() => {
+                if (pc && pc.connectionState !== 'connected') {
+                    console.warn('Connection timeout, reconnecting...');
+                    cleanup(); retry();
+                }
+            }, 10000);
+
             pc.ontrack = (e) => {
+                clearTimeout(connTimeout);
                 video.srcObject = e.streams[0] || new MediaStream([e.track]);
                 video.play().catch(() => { });
                 msg.classList.remove('visible');
@@ -130,7 +140,15 @@
                 }
             };
             pc.onconnectionstatechange = () => {
+                if (pc.connectionState === 'connected') clearTimeout(connTimeout);
                 if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                    clearTimeout(connTimeout);
+                    cleanup(); retry();
+                }
+            };
+            pc.oniceconnectionstatechange = () => {
+                if (pc && (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected')) {
+                    clearTimeout(connTimeout);
                     cleanup(); retry();
                 }
             };
