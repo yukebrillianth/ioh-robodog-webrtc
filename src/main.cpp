@@ -126,7 +126,7 @@ int main(int argc, char* argv[]) {
 
     // ─── Main watchdog loop ───────────────────────────────────────────────────
     auto last_stats_time = std::chrono::steady_clock::now();
-    constexpr auto stats_interval = std::chrono::seconds(30);
+    constexpr auto stats_interval = std::chrono::seconds(10);
 
     while (!g_shutdown.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
