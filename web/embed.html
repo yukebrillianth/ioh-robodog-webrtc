@@ -107,8 +107,10 @@
         }
 
         function initPC() {
+            const hasTurn = iceServers && iceServers.some(s => s.urls && String(s.urls).includes('turn:'));
             const cfg = {
                 iceServers: iceServers || [{ urls: 'stun:stun.cloudflare.com:3478' }],
+                iceTransportPolicy: hasTurn ? 'relay' : 'all',
                 bundlePolicy: 'max-bundle',
                 rtcpMuxPolicy: 'require'
             };

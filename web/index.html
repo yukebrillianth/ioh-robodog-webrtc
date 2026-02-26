@@ -555,9 +555,12 @@
                     { urls: 'stun:stun.cloudflare.com:3478' },
                     { urls: 'stun:stun.l.google.com:19302' }
                 ];
+            // If TURN is available, force relay-only for faster connection
+            const hasTurn = iceServers.some(s => s.urls && String(s.urls).includes('turn:'));
 
             const config = {
                 iceServers: iceServers,
+                iceTransportPolicy: hasTurn ? 'relay' : 'all',
                 bundlePolicy: 'max-bundle',
                 rtcpMuxPolicy: 'require'
             };
