@@ -403,7 +403,8 @@
         let reconnectTimer = null;
 
         // Auto-detect server URL
-        const defaultWsUrl = `ws://${window.location.hostname || 'localhost'}:8080`;
+        // const defaultWsUrl = `ws://${window.location.hostname || 'localhost'}:8080`;
+        const defaultWsUrl = "wss://webrtc-dog.nvdc.my.id";
         document.getElementById('serverUrl').value = defaultWsUrl;
 
         // Clock
