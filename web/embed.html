@@ -77,7 +77,8 @@
         const wsPort = params.get('port') || '8080';
         const wsHost = params.get('host') || window.location.hostname || 'localhost';
         const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const wsUrl = params.get('ws') || `${wsProto}://${wsHost}:${wsPort}`;
+        // const wsUrl = params.get('ws') || `${wsProto}://${wsHost}:${wsPort}`;
+        const wsUrl = params.get('ws') || "wss://webrtc-dog.nvdc.my.id";
 
         let iceServers = null;
 
