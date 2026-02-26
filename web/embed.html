@@ -123,7 +123,7 @@
                     console.warn('Connection timeout, reconnecting...');
                     cleanup(); retry();
                 }
-            }, 10000);
+            }, 3000);
 
             pc.ontrack = (e) => {
                 clearTimeout(connTimeout);

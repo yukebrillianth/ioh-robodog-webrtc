@@ -5,9 +5,12 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=notify
-ExecStart=/usr/local/bin/stream-server --config /etc/stream-server/config.yaml
-WorkingDirectory=/usr/local/share/stream-server
+Type=simple
+User=ysc
+WorkingDirectory=/home/ysc/ioh-robodog-webrtc
+ExecStart=/home/ysc/ioh-robodog-webrtc/build/stream-server --config /home/ysc/ioh-robodog-webrtc/config.yaml
+Environment=LD_LIBRARY_PATH=/home/ysc/ioh-robodog-webrtc/build/_deps/libdatachannel-build:/home/ysc/ioh-robodog-webrtc/build/_deps/spdlog-build
+Environment=HOME=/home/ysc
 
 # Restart policy
 Restart=always
@@ -15,22 +18,8 @@ RestartSec=3
 StartLimitIntervalSec=60
 StartLimitBurst=10
 
-# Watchdog (server sends sd_notify keepalive)
-WatchdogSec=60
-
 # Resource limits
 LimitNOFILE=65536
-LimitNPROC=4096
-
-# Security hardening
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/var/log/stream-server
-PrivateTmp=true
-
-# Environment
-EnvironmentFile=-/etc/stream-server/environment
 
 # Logging
 StandardOutput=journal
