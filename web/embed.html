@@ -166,7 +166,8 @@
             const hasTurn = iceServers && iceServers.some(s => s.urls && String(s.urls).includes('turn:'));
             pc = new RTCPeerConnection({
                 iceServers: iceServers || [{ urls: 'stun:stun.cloudflare.com:3478' }],
-                iceTransportPolicy: hasTurn ? 'relay' : 'all',
+                // iceTransportPolicy: hasTurn ? 'relay' : 'all',
+                iceTransportPolicy: 'all',
                 bundlePolicy: 'max-bundle',
                 rtcpMuxPolicy: 'require'
             });
