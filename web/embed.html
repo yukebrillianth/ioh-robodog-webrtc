@@ -114,18 +114,20 @@
 
         // ─── ABR Config (tuned for Surabaya → Barcelona ~250ms RTT) ─
         const ABR = {
-            min: 300,           // kbps floor
+            min: 800,           // kbps floor (encoder needs this for decent FPS)
             max: 2000,          // kbps ceiling
-            start: 1200,        // start conservative for international
-            rttHigh: 250,       // ms — reduce bitrate (Surabaya→Barcelona normal)
+            start: 1800,        // start at configured bitrate
+            rttHigh: 250,       // ms — reduce bitrate
             rttCritical: 400,   // ms — aggressive reduce
             rttLow: 150,        // ms — safe to increase
             lossThreshold: 3,   // packets/interval triggers reduction
             stableCycles: 5,    // cycles before increasing
+            warmupMs: 6000,     // ignore FPS for first 6s (buffering)
         };
         let abrBitrate = ABR.start;
         let prevLost = 0;
         let stableCount = 0;
+        let abrStartTime = 0;
 
         // ─── Connect ─────────────────────────────────────────────────
         function connect() {
@@ -238,9 +240,12 @@
             prevAbrTs = 0;
             stableCount = 0;
             abrBitrate = ABR.start;
+            abrStartTime = Date.now();
 
             abrTimer = setInterval(async () => {
                 if (!pc || pc.connectionState !== 'connected') return;
+
+                const inWarmup = (Date.now() - abrStartTime) < ABR.warmupMs;
 
                 let rtt = 0, lostDelta = 0, fps = -1;
                 const stats = await pc.getStats();
@@ -269,14 +274,12 @@
 
                 let changed = false;
 
-                // PRIMARY: FPS-based detection (most direct congestion signal)
-                if (fps >= 0 && fps < 10) {
-                    // Critical FPS drop — slash bitrate 50%
+                // PRIMARY: FPS-based detection (skip during warmup)
+                if (!inWarmup && fps >= 0 && fps < 10) {
                     abrBitrate = Math.max(ABR.min, Math.floor(abrBitrate * 0.5));
                     stableCount = 0;
                     changed = true;
-                } else if (fps >= 0 && fps < 20) {
-                    // Low FPS — reduce 30%
+                } else if (!inWarmup && fps >= 0 && fps < 20) {
                     abrBitrate = Math.max(ABR.min, Math.floor(abrBitrate * 0.7));
                     stableCount = 0;
                     changed = true;

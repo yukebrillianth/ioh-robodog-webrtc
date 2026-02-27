@@ -607,22 +607,25 @@
             };
         }
         // ─── Adaptive Bitrate (ABR) — tuned for Surabaya→Barcelona ──
-        const ABR_MIN = 300;        // kbps floor
+        const ABR_MIN = 800;        // kbps floor (encoder needs this for decent FPS)
         const ABR_MAX = 2000;       // kbps ceiling
-        const ABR_DEFAULT = 1200;   // start conservative for international
+        const ABR_DEFAULT = 1800;   // start at configured bitrate
         const RTT_HIGH = 250;       // ms — reduce (normal for Surabaya→Barcelona)
         const RTT_CRITICAL = 400;   // ms — aggressive reduce
         const RTT_LOW = 150;        // ms — safe to increase
         const LOSS_THRESHOLD = 3;   // packets/interval triggers reduction
+        const ABR_WARMUP_MS = 6000; // skip FPS reduction during warmup
         let abrBitrate = ABR_DEFAULT;
         let prevPacketsLost = 0;
-        let abrStableCount = 0;     // cycles with good conditions
+        let abrStableCount = 0;
+        let abrStartTs = 0;
 
         function startStatsMonitor() {
             stopStatsMonitor();
             prevBytesReceived = 0;
             prevTimestamp = 0;
             prevPacketsLost = 0;
+            abrStartTs = Date.now();
 
             statsInterval = setInterval(async () => {
                 if (!pc) return;
@@ -731,11 +734,12 @@
                 });
 
                 let changed = false;
-                // PRIMARY: FPS-based (most direct congestion signal)
-                if (currentFps >= 0 && currentFps < 10) {
+                const inWarmup = (Date.now() - abrStartTs) < ABR_WARMUP_MS;
+                // PRIMARY: FPS-based (skip during warmup)
+                if (!inWarmup && currentFps >= 0 && currentFps < 10) {
                     abrBitrate = Math.max(ABR_MIN, Math.floor(abrBitrate * 0.5));
                     abrStableCount = 0; changed = true;
-                } else if (currentFps >= 0 && currentFps < 20) {
+                } else if (!inWarmup && currentFps >= 0 && currentFps < 20) {
                     abrBitrate = Math.max(ABR_MIN, Math.floor(abrBitrate * 0.7));
                     abrStableCount = 0; changed = true;
                 }
