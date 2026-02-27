@@ -713,37 +713,46 @@
                     }
                 });
 
-                // ─── ABR Decision ──────────────────────────────────
+                // ─── ABR Decision (FPS-driven) ─────────────────────
                 let currentRtt = 0;
                 let currentLoss = 0;
+                let currentFps = -1;
                 stats.forEach(report => {
                     if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.currentRoundTripTime) {
-                        currentRtt = report.currentRoundTripTime * 1000; // ms
+                        currentRtt = report.currentRoundTripTime * 1000;
                     }
                     if (report.type === 'inbound-rtp' && report.kind === 'video') {
                         currentLoss = (report.packetsLost || 0) - prevPacketsLost;
                         prevPacketsLost = report.packetsLost || 0;
+                        if (report.framesPerSecond !== undefined) {
+                            currentFps = report.framesPerSecond;
+                        }
                     }
                 });
 
                 let changed = false;
-                if (currentRtt > RTT_CRITICAL || currentLoss > LOSS_THRESHOLD * 2) {
-                    // Critical — drop 50%
+                // PRIMARY: FPS-based (most direct congestion signal)
+                if (currentFps >= 0 && currentFps < 10) {
                     abrBitrate = Math.max(ABR_MIN, Math.floor(abrBitrate * 0.5));
-                    abrStableCount = 0;
-                    changed = true;
+                    abrStableCount = 0; changed = true;
+                } else if (currentFps >= 0 && currentFps < 20) {
+                    abrBitrate = Math.max(ABR_MIN, Math.floor(abrBitrate * 0.7));
+                    abrStableCount = 0; changed = true;
+                }
+                // SECONDARY: RTT/loss
+                else if (currentRtt > RTT_CRITICAL || currentLoss > LOSS_THRESHOLD * 2) {
+                    abrBitrate = Math.max(ABR_MIN, Math.floor(abrBitrate * 0.5));
+                    abrStableCount = 0; changed = true;
                 } else if (currentRtt > RTT_HIGH || currentLoss > LOSS_THRESHOLD) {
-                    // Bad conditions — reduce bitrate 25%
                     abrBitrate = Math.max(ABR_MIN, Math.floor(abrBitrate * 0.75));
-                    abrStableCount = 0;
-                    changed = true;
-                } else if (currentRtt > 0 && currentRtt < RTT_LOW && currentLoss <= 0) {
-                    // Good conditions — slowly increase
+                    abrStableCount = 0; changed = true;
+                }
+                // RAMP UP: only when FPS healthy + network good
+                else if (currentFps >= 24 && currentRtt > 0 && currentRtt < RTT_LOW && currentLoss <= 0) {
                     abrStableCount++;
                     if (abrStableCount >= 5 && abrBitrate < ABR_MAX) {
                         abrBitrate = Math.min(ABR_MAX, Math.floor(abrBitrate * 1.1));
-                        abrStableCount = 0;
-                        changed = true;
+                        abrStableCount = 0; changed = true;
                     }
                 } else {
                     abrStableCount = 0;

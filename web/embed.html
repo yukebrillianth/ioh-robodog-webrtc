@@ -226,23 +226,41 @@
             };
         }
 
-        // ─── ABR Engine ──────────────────────────────────────────────
+        // ─── ABR Engine (FPS-driven) ─────────────────────────────────
+        let prevFrames = 0;
+        let prevAbrTs = 0;
+
         function startABR() {
             stopABR();
             prevLost = 0;
+            prevFrames = 0;
+            prevAbrTs = 0;
             stableCount = 0;
             abrBitrate = ABR.start;
 
             abrTimer = setInterval(async () => {
                 if (!pc || pc.connectionState !== 'connected') return;
 
-                let rtt = 0, lostDelta = 0;
+                let rtt = 0, lostDelta = 0, fps = -1;
                 const stats = await pc.getStats();
                 stats.forEach(r => {
                     if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime) {
                         rtt = r.currentRoundTripTime * 1000;
                     }
                     if (r.type === 'inbound-rtp' && r.kind === 'video') {
+                        // Use framesPerSecond directly if available
+                        if (r.framesPerSecond !== undefined) {
+                            fps = r.framesPerSecond;
+                        } else if (r.framesDecoded !== undefined) {
+                            // Calculate FPS from decoded frames delta
+                            const now = r.timestamp;
+                            if (prevAbrTs > 0) {
+                                const dt = (now - prevAbrTs) / 1000;
+                                if (dt > 0) fps = (r.framesDecoded - prevFrames) / dt;
+                            }
+                            prevFrames = r.framesDecoded;
+                            prevAbrTs = r.timestamp;
+                        }
                         lostDelta = (r.packetsLost || 0) - prevLost;
                         prevLost = r.packetsLost || 0;
                     }
@@ -250,18 +268,30 @@
 
                 let changed = false;
 
-                if (rtt > ABR.rttCritical || lostDelta > ABR.lossThreshold * 2) {
-                    // Critical — drop 50%
+                // PRIMARY: FPS-based detection (most direct congestion signal)
+                if (fps >= 0 && fps < 10) {
+                    // Critical FPS drop — slash bitrate 50%
+                    abrBitrate = Math.max(ABR.min, Math.floor(abrBitrate * 0.5));
+                    stableCount = 0;
+                    changed = true;
+                } else if (fps >= 0 && fps < 20) {
+                    // Low FPS — reduce 30%
+                    abrBitrate = Math.max(ABR.min, Math.floor(abrBitrate * 0.7));
+                    stableCount = 0;
+                    changed = true;
+                }
+                // SECONDARY: RTT/loss based
+                else if (rtt > ABR.rttCritical || lostDelta > ABR.lossThreshold * 2) {
                     abrBitrate = Math.max(ABR.min, Math.floor(abrBitrate * 0.5));
                     stableCount = 0;
                     changed = true;
                 } else if (rtt > ABR.rttHigh || lostDelta > ABR.lossThreshold) {
-                    // Bad — reduce 25%
                     abrBitrate = Math.max(ABR.min, Math.floor(abrBitrate * 0.75));
                     stableCount = 0;
                     changed = true;
-                } else if (rtt > 0 && rtt < ABR.rttLow && lostDelta <= 0) {
-                    // Good — slowly increase after stable period
+                }
+                // RAMP UP: only when FPS is healthy AND network is good
+                else if (fps >= 24 && rtt > 0 && rtt < ABR.rttLow && lostDelta <= 0) {
                     stableCount++;
                     if (stableCount >= ABR.stableCycles && abrBitrate < ABR.max) {
                         abrBitrate = Math.min(ABR.max, Math.floor(abrBitrate * 1.1));
@@ -275,7 +305,7 @@
                 if (changed && ws && ws.readyState === 1) {
                     ws.send(JSON.stringify({ type: 'set_bitrate', bitrate_kbps: abrBitrate }));
                 }
-            }, 2000); // Check every 2s — less aggressive than 1s for stability
+            }, 2000);
         }
 
         function stopABR() {

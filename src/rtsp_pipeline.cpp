@@ -57,13 +57,21 @@ void RtspPipeline::set_bitrate(int bitrate_kbps) {
 
     if (is_hw_encode_) {
         // nvv4l2h264enc uses bits per second
-        g_object_set(G_OBJECT(encoder_), "bitrate", (guint)(clamped * 1000), nullptr);
+        guint bps = static_cast<guint>(clamped * 1000);
+        guint peak = static_cast<guint>(clamped * 1200); // peak = 120% of target
+        g_object_set(G_OBJECT(encoder_),
+                     "bitrate", bps,
+                     "peak-bitrate", peak,
+                     nullptr);
     } else {
         // x264enc uses kbps
-        g_object_set(G_OBJECT(encoder_), "bitrate", (guint)clamped, nullptr);
+        g_object_set(G_OBJECT(encoder_),
+                     "bitrate", static_cast<guint>(clamped),
+                     "vbv-buf-capacity", static_cast<guint>(clamped),
+                     nullptr);
     }
 
-    spdlog::info("Encoder bitrate adjusted to {} kbps", clamped);
+    spdlog::info("Encoder bitrate: {} kbps", clamped);
 }
 
 RtspPipeline::Stats RtspPipeline::get_stats() const {
