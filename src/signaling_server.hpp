@@ -27,6 +27,10 @@ public:
 
     bool is_running() const { return running_.load(); }
 
+    // Set callback for adaptive bitrate requests from clients
+    using BitrateCallback = std::function<void(int bitrate_kbps)>;
+    void set_bitrate_callback(BitrateCallback cb) { bitrate_cb_ = std::move(cb); }
+
 private:
     void on_client_connected(std::shared_ptr<rtc::WebSocket> ws);
     void on_client_message(const std::string& peer_id,
@@ -53,6 +57,7 @@ private:
     std::unordered_map<std::string, ClientSession> clients_; // peer_id → session
 
     std::atomic<bool> running_{false};
+    BitrateCallback bitrate_cb_;
 };
 
 } // namespace ss

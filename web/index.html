@@ -373,6 +373,7 @@
                 <div class="stat-row"><span class="stat-label">Packets Lost</span><span class="stat-value" id="statLost">—</span></div>
                 <div class="stat-row"><span class="stat-label">Jitter</span><span class="stat-value" id="statJitter">—</span></div>
                 <div class="stat-row"><span class="stat-label">Bytes Received</span><span class="stat-value" id="statBytes">—</span></div>
+                <div class="stat-row"><span class="stat-label">ABR Target</span><span class="stat-value" id="statAbr">—</span></div>
             </div>
 
             <div class="sidebar-section">
@@ -605,11 +606,23 @@
                 document.getElementById('statIce').textContent = pc.iceConnectionState;
             };
         }
+        // ─── Adaptive Bitrate (ABR) — tuned for Surabaya→Barcelona ──
+        const ABR_MIN = 300;        // kbps floor
+        const ABR_MAX = 2000;       // kbps ceiling
+        const ABR_DEFAULT = 1200;   // start conservative for international
+        const RTT_HIGH = 250;       // ms — reduce (normal for Surabaya→Barcelona)
+        const RTT_CRITICAL = 400;   // ms — aggressive reduce
+        const RTT_LOW = 150;        // ms — safe to increase
+        const LOSS_THRESHOLD = 3;   // packets/interval triggers reduction
+        let abrBitrate = ABR_DEFAULT;
+        let prevPacketsLost = 0;
+        let abrStableCount = 0;     // cycles with good conditions
 
         function startStatsMonitor() {
             stopStatsMonitor();
             prevBytesReceived = 0;
             prevTimestamp = 0;
+            prevPacketsLost = 0;
 
             statsInterval = setInterval(async () => {
                 if (!pc) return;
@@ -699,7 +712,49 @@
                         }
                     }
                 });
-            }, 1000);
+
+                // ─── ABR Decision ──────────────────────────────────
+                let currentRtt = 0;
+                let currentLoss = 0;
+                stats.forEach(report => {
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.currentRoundTripTime) {
+                        currentRtt = report.currentRoundTripTime * 1000; // ms
+                    }
+                    if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                        currentLoss = (report.packetsLost || 0) - prevPacketsLost;
+                        prevPacketsLost = report.packetsLost || 0;
+                    }
+                });
+
+                let changed = false;
+                if (currentRtt > RTT_CRITICAL || currentLoss > LOSS_THRESHOLD * 2) {
+                    // Critical — drop 50%
+                    abrBitrate = Math.max(ABR_MIN, Math.floor(abrBitrate * 0.5));
+                    abrStableCount = 0;
+                    changed = true;
+                } else if (currentRtt > RTT_HIGH || currentLoss > LOSS_THRESHOLD) {
+                    // Bad conditions — reduce bitrate 25%
+                    abrBitrate = Math.max(ABR_MIN, Math.floor(abrBitrate * 0.75));
+                    abrStableCount = 0;
+                    changed = true;
+                } else if (currentRtt > 0 && currentRtt < RTT_LOW && currentLoss <= 0) {
+                    // Good conditions — slowly increase
+                    abrStableCount++;
+                    if (abrStableCount >= 5 && abrBitrate < ABR_MAX) {
+                        abrBitrate = Math.min(ABR_MAX, Math.floor(abrBitrate * 1.1));
+                        abrStableCount = 0;
+                        changed = true;
+                    }
+                } else {
+                    abrStableCount = 0;
+                }
+
+                if (changed && ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'set_bitrate', bitrate_kbps: abrBitrate }));
+                }
+                document.getElementById('statAbr').textContent = abrBitrate + ' kbps';
+
+            }, 2000); // 2s interval for more stable ABR
         }
 
         function stopStatsMonitor() {
@@ -737,7 +792,7 @@
 
             // Reset stats display
             ['statState', 'statIce', 'statCodec', 'statRes', 'statFps', 'statBitrate',
-                'statRtt', 'statLost', 'statJitter', 'statBytes',
+                'statRtt', 'statLost', 'statJitter', 'statBytes', 'statAbr',
                 'statConnType', 'statRemoteIp', 'statLocalIp', 'statProtocol'].forEach(id => {
                     document.getElementById(id).textContent = '—';
                 });

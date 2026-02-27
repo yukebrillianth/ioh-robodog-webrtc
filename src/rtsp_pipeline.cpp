@@ -44,7 +44,26 @@ void RtspPipeline::stop() {
         gst_object_unref(pipeline_);
         pipeline_ = nullptr;
         appsink_ = nullptr;
+        encoder_ = nullptr;
     }
+}
+
+void RtspPipeline::set_bitrate(int bitrate_kbps) {
+    if (!encoder_ || !running_.load()) return;
+
+    // Clamp to configured limits
+    int clamped = std::max(config_.webrtc.video.min_bitrate_kbps,
+                           std::min(bitrate_kbps, config_.webrtc.video.max_bitrate_kbps));
+
+    if (is_hw_encode_) {
+        // nvv4l2h264enc uses bits per second
+        g_object_set(G_OBJECT(encoder_), "bitrate", (guint)(clamped * 1000), nullptr);
+    } else {
+        // x264enc uses kbps
+        g_object_set(G_OBJECT(encoder_), "bitrate", (guint)clamped, nullptr);
+    }
+
+    spdlog::info("Encoder bitrate adjusted to {} kbps", clamped);
 }
 
 RtspPipeline::Stats RtspPipeline::get_stats() const {
@@ -127,10 +146,11 @@ void RtspPipeline::build_pipeline() {
 #ifdef JETSON_PLATFORM
         // Jetson: always use HW decoder, optionally HW encoder
         if (config_.encoding.hw_encode) {
+            is_hw_encode_ = true;
             // HW decode → HW encode
             pipeline_desc +=
                 "nvv4l2decoder enable-max-performance=1 ! "
-                "nvv4l2h264enc "
+                "nvv4l2h264enc name=enc "
                 "bitrate=" + std::to_string(config_.webrtc.video.bitrate_kbps * 1000) + " "
                 "peak-bitrate=" + std::to_string(config_.webrtc.video.max_bitrate_kbps * 1000) + " "
                 "maxperf-enable=1 "
@@ -140,10 +160,11 @@ void RtspPipeline::build_pipeline() {
                 "idrinterval=" + std::to_string(config_.encoding.idr_interval) + " ! ";
         } else {
             // HW decode → SW encode
+            is_hw_encode_ = false;
             pipeline_desc +=
                 "nvv4l2decoder enable-max-performance=1 ! "
                 "nvvidconv ! video/x-raw,format=I420 ! "
-                "x264enc tune=zerolatency speed-preset=ultrafast "
+                "x264enc name=enc tune=zerolatency speed-preset=ultrafast "
                 "bitrate=" + std::to_string(config_.webrtc.video.bitrate_kbps) + " "
                 "vbv-buf-capacity=" + std::to_string(config_.webrtc.video.max_bitrate_kbps) + " "
                 "key-int-max=" + std::to_string(config_.encoding.idr_interval) + " "
@@ -151,9 +172,10 @@ void RtspPipeline::build_pipeline() {
         }
 #else
         // Non-Jetson: software decode + encode
+        is_hw_encode_ = false;
         pipeline_desc +=
             "avdec_h264 ! videoconvert ! "
-            "x264enc tune=zerolatency speed-preset=ultrafast "
+            "x264enc name=enc tune=zerolatency speed-preset=ultrafast "
             "bitrate=" + std::to_string(config_.webrtc.video.bitrate_kbps) + " "
             "vbv-buf-capacity=" + std::to_string(config_.webrtc.video.max_bitrate_kbps) + " "
             "key-int-max=" + std::to_string(config_.encoding.idr_interval) + " "
@@ -178,6 +200,12 @@ void RtspPipeline::build_pipeline() {
     appsink_ = gst_bin_get_by_name(GST_BIN(pipeline_), "sink");
     if (!appsink_) {
         throw std::runtime_error("Failed to find appsink element");
+    }
+
+    // Grab encoder element for dynamic bitrate control
+    encoder_ = gst_bin_get_by_name(GST_BIN(pipeline_), "enc");
+    if (encoder_) {
+        spdlog::info("Encoder found — dynamic bitrate control enabled");
     }
 
     // Configure appsink callbacks

@@ -101,6 +101,13 @@ int main(int argc, char* argv[]) {
         }
     );
 
+    // Wire browser ABR → encoder bitrate control
+    signaling_server.set_bitrate_callback(
+        [&rtsp_pipeline](int bitrate_kbps) {
+            rtsp_pipeline.set_bitrate(bitrate_kbps);
+        }
+    );
+
     // ─── Start everything ─────────────────────────────────────────────────────
     webrtc_server.start();
 

@@ -22,8 +22,8 @@ webrtc:
     clock_rate: 90000
     payload_type: 96
     # Bitrate limiting
-    bitrate_kbps: 4000
-    max_bitrate_kbps: 8000
+    bitrate_kbps: 1800
+    max_bitrate_kbps: 2000
     min_bitrate_kbps: 500
     fps: 30
 

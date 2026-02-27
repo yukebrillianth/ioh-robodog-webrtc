@@ -183,6 +183,12 @@ void SignalingServer::on_client_message(const std::string& peer_id,
             json pong;
             pong["type"] = "pong";
             ws->send(pong.dump());
+        } else if (type == "set_bitrate") {
+            int bitrate = msg.value("bitrate_kbps", 0);
+            if (bitrate > 0 && bitrate_cb_) {
+                spdlog::debug("[{}] ABR request: {} kbps", peer_id, bitrate);
+                bitrate_cb_(bitrate);
+            }
         } else {
             spdlog::debug("[{}] Unknown message type: {}", peer_id, type);
         }

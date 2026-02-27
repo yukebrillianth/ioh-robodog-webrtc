@@ -27,7 +27,7 @@
             background: #000;
         }
 
-        .reconnecting {
+        .overlay {
             position: fixed;
             top: 50%;
             left: 50%;
@@ -39,7 +39,7 @@
             display: none;
         }
 
-        .reconnecting.visible {
+        .overlay.visible {
             display: block;
         }
 
@@ -47,9 +47,9 @@
             width: 32px;
             height: 32px;
             border: 3px solid #333;
-            border-top-color: #888;
+            border-top-color: #0f0;
             border-radius: 50%;
-            animation: spin 1s linear infinite;
+            animation: spin 0.8s linear infinite;
             margin: 0 auto 12px;
         }
 
@@ -58,103 +58,234 @@
                 transform: rotate(360deg);
             }
         }
+
+        /* Subtle live indicator when streaming */
+        .live-dot {
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            width: 10px;
+            height: 10px;
+            background: #e00;
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+            display: none;
+        }
+
+        .live-dot.active {
+            display: block;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
     </style>
 </head>
 
 <body>
     <video id="v" autoplay muted playsinline></video>
-    <div class="reconnecting" id="msg">
+    <div class="overlay" id="msg">
         <div class="spinner"></div>
         Connecting video...
     </div>
+    <div class="live-dot" id="liveDot"></div>
     <script>
         const video = document.getElementById('v');
         const msg = document.getElementById('msg');
-        let ws, pc;
+        const liveDot = document.getElementById('liveDot');
+        let ws, pc, statsTimer, abrTimer;
 
-        // Auto-detect signaling URL from query param or page hostname
+        // ─── Config ──────────────────────────────────────────────────
         const params = new URLSearchParams(window.location.search);
         const wsPort = params.get('port') || '8080';
         const wsHost = params.get('host') || window.location.hostname || 'localhost';
         const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        // const wsUrl = params.get('ws') || `${wsProto}://${wsHost}:${wsPort}`;
-        const wsUrl = params.get('ws') || "wss://webrtc-dog.nvdc.my.id";
+        const wsUrl = params.get('ws') || `${wsProto}://${wsHost}:${wsPort}`;
 
         let iceServers = null;
 
+        // ─── ABR Config (tuned for Surabaya → Barcelona ~250ms RTT) ─
+        const ABR = {
+            min: 300,           // kbps floor
+            max: 2000,          // kbps ceiling
+            start: 1200,        // start conservative for international
+            rttHigh: 250,       // ms — reduce bitrate (Surabaya→Barcelona normal)
+            rttCritical: 400,   // ms — aggressive reduce
+            rttLow: 150,        // ms — safe to increase
+            lossThreshold: 3,   // packets/interval triggers reduction
+            stableCycles: 5,    // cycles before increasing
+        };
+        let abrBitrate = ABR.start;
+        let prevLost = 0;
+        let stableCount = 0;
+
+        // ─── Connect ─────────────────────────────────────────────────
         function connect() {
             msg.classList.add('visible');
-            msg.querySelector('div:last-child') || (msg.innerHTML = '<div class="spinner"></div>Connecting...');
+            liveDot.classList.remove('active');
 
-            try { ws = new WebSocket(wsUrl); } catch (e) { retry(); return; }
+            try { ws = new WebSocket(wsUrl); }
+            catch (e) { retry(); return; }
 
             ws.onopen = () => { };
             ws.onclose = () => { cleanup(); retry(); };
             ws.onerror = () => { };
             ws.onmessage = async (e) => {
                 const m = JSON.parse(e.data);
-                if (m.type === 'welcome') {
-                    iceServers = m.iceServers || null;
-                    initPC();
-                } else if (m.type === 'offer' && pc) {
-                    await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: m.sdp }));
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp }));
-                } else if (m.type === 'candidate' && pc && m.data) {
-                    try { await pc.addIceCandidate(new RTCIceCandidate(m.data)); } catch (e) { }
+                switch (m.type) {
+                    case 'welcome':
+                        iceServers = m.iceServers || null;
+                        initPC();
+                        break;
+                    case 'offer':
+                        if (!pc) break;
+                        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: m.sdp }));
+                        const answer = await pc.createAnswer();
+                        await pc.setLocalDescription(answer);
+                        ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp }));
+                        break;
+                    case 'candidate':
+                        if (pc && m.data) {
+                            try { await pc.addIceCandidate(new RTCIceCandidate(m.data)); } catch (_) { }
+                        }
+                        break;
                 }
             };
         }
 
+        // ─── Peer Connection ─────────────────────────────────────────
         function initPC() {
             const hasTurn = iceServers && iceServers.some(s => s.urls && String(s.urls).includes('turn:'));
-            const cfg = {
+            pc = new RTCPeerConnection({
                 iceServers: iceServers || [{ urls: 'stun:stun.cloudflare.com:3478' }],
                 iceTransportPolicy: hasTurn ? 'relay' : 'all',
                 bundlePolicy: 'max-bundle',
                 rtcpMuxPolicy: 'require'
-            };
-            pc = new RTCPeerConnection(cfg);
+            });
 
-            // Timeout: if not connected in 10s, force reconnect
-            const connTimeout = setTimeout(() => {
+            // Connection timeout — 8s for international relay
+            const timeout = setTimeout(() => {
                 if (pc && pc.connectionState !== 'connected') {
-                    console.warn('Connection timeout, reconnecting...');
+                    console.warn('Connection timeout');
                     cleanup(); retry();
                 }
-            }, 3000);
+            }, 8000);
 
             pc.ontrack = (e) => {
-                clearTimeout(connTimeout);
+                clearTimeout(timeout);
                 video.srcObject = e.streams[0] || new MediaStream([e.track]);
                 video.play().catch(() => { });
                 msg.classList.remove('visible');
+                liveDot.classList.add('active');
+                startABR();
             };
+
             pc.onicecandidate = (e) => {
                 if (e.candidate && ws && ws.readyState === 1) {
                     ws.send(JSON.stringify({
                         type: 'candidate',
-                        data: { candidate: e.candidate.candidate, sdpMid: e.candidate.sdpMid, sdpMLineIndex: e.candidate.sdpMLineIndex }
+                        data: {
+                            candidate: e.candidate.candidate,
+                            sdpMid: e.candidate.sdpMid,
+                            sdpMLineIndex: e.candidate.sdpMLineIndex
+                        }
                     }));
                 }
             };
+
             pc.onconnectionstatechange = () => {
-                if (pc.connectionState === 'connected') clearTimeout(connTimeout);
+                if (pc.connectionState === 'connected') {
+                    clearTimeout(timeout);
+                }
                 if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-                    clearTimeout(connTimeout);
+                    clearTimeout(timeout);
                     cleanup(); retry();
                 }
+                // Handle temporary disconnect (network blip) — wait 5s before giving up
+                if (pc.connectionState === 'disconnected') {
+                    setTimeout(() => {
+                        if (pc && pc.connectionState === 'disconnected') {
+                            cleanup(); retry();
+                        }
+                    }, 5000);
+                }
             };
+
             pc.oniceconnectionstatechange = () => {
-                if (pc && (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected')) {
-                    clearTimeout(connTimeout);
+                if (pc && pc.iceConnectionState === 'failed') {
                     cleanup(); retry();
                 }
             };
         }
 
+        // ─── ABR Engine ──────────────────────────────────────────────
+        function startABR() {
+            stopABR();
+            prevLost = 0;
+            stableCount = 0;
+            abrBitrate = ABR.start;
+
+            abrTimer = setInterval(async () => {
+                if (!pc || pc.connectionState !== 'connected') return;
+
+                let rtt = 0, lostDelta = 0;
+                const stats = await pc.getStats();
+                stats.forEach(r => {
+                    if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime) {
+                        rtt = r.currentRoundTripTime * 1000;
+                    }
+                    if (r.type === 'inbound-rtp' && r.kind === 'video') {
+                        lostDelta = (r.packetsLost || 0) - prevLost;
+                        prevLost = r.packetsLost || 0;
+                    }
+                });
+
+                let changed = false;
+
+                if (rtt > ABR.rttCritical || lostDelta > ABR.lossThreshold * 2) {
+                    // Critical — drop 50%
+                    abrBitrate = Math.max(ABR.min, Math.floor(abrBitrate * 0.5));
+                    stableCount = 0;
+                    changed = true;
+                } else if (rtt > ABR.rttHigh || lostDelta > ABR.lossThreshold) {
+                    // Bad — reduce 25%
+                    abrBitrate = Math.max(ABR.min, Math.floor(abrBitrate * 0.75));
+                    stableCount = 0;
+                    changed = true;
+                } else if (rtt > 0 && rtt < ABR.rttLow && lostDelta <= 0) {
+                    // Good — slowly increase after stable period
+                    stableCount++;
+                    if (stableCount >= ABR.stableCycles && abrBitrate < ABR.max) {
+                        abrBitrate = Math.min(ABR.max, Math.floor(abrBitrate * 1.1));
+                        stableCount = 0;
+                        changed = true;
+                    }
+                } else {
+                    stableCount = 0;
+                }
+
+                if (changed && ws && ws.readyState === 1) {
+                    ws.send(JSON.stringify({ type: 'set_bitrate', bitrate_kbps: abrBitrate }));
+                }
+            }, 2000); // Check every 2s — less aggressive than 1s for stability
+        }
+
+        function stopABR() {
+            if (abrTimer) { clearInterval(abrTimer); abrTimer = null; }
+        }
+
+        // ─── Cleanup & Retry ─────────────────────────────────────────
         function cleanup() {
+            stopABR();
+            liveDot.classList.remove('active');
             if (pc) { pc.close(); pc = null; }
             if (ws) { ws.onclose = null; ws.close(); ws = null; }
             video.srcObject = null;
@@ -162,11 +293,20 @@
 
         function retry() {
             msg.classList.add('visible');
-            setTimeout(connect, 3000);
+            setTimeout(connect, 2000);
         }
 
-        // Ping keepalive
-        setInterval(() => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' })); }, 10000);
+        // Keepalive ping every 5s (aggressive for tunnel stability)
+        setInterval(() => {
+            if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' }));
+        }, 5000);
+
+        // Visibility change — reconnect when tab becomes visible again
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && (!pc || pc.connectionState !== 'connected')) {
+                cleanup(); connect();
+            }
+        });
 
         connect();
     </script>

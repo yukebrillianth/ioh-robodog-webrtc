@@ -34,6 +34,9 @@ public:
     // Check if pipeline is running
     bool is_running() const { return running_.load(); }
 
+    // Dynamically adjust encoder bitrate (only in re-encode mode)
+    void set_bitrate(int bitrate_kbps);
+
     // Get pipeline statistics
     struct Stats {
         uint64_t frames_received = 0;
@@ -57,6 +60,8 @@ private:
 
     GstElement* pipeline_ = nullptr;
     GstElement* appsink_ = nullptr;
+    GstElement* encoder_ = nullptr;  // for dynamic bitrate control
+    bool is_hw_encode_ = false;
 
     std::thread thread_;
     std::atomic<bool> running_{false};
